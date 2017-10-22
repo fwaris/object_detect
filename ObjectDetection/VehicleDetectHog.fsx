@@ -8,6 +8,7 @@ open Utils
 open OpenCvSharp.ML
 open System.Runtime.InteropServices
 open Probability
+open ObjectTracking
 
 //windows size over which the Histogram of Gradient (HOG) featuers are extracted
 let trainWinSize = Size( 64, 64 )  
@@ -35,11 +36,16 @@ let hog (sz:Size) =
 //normalize frame or image before feature extraction
 let normalizeFrame (img:Mat) =
     let normd = new Mat()
-    img.CopyTo(normd)
+    //Cv2.CvtColor(!>img,!>normd,ColorConversionCodes.BGR2YUV)
+    //Cv2.CvtColor(!>img,!>normd,ColorConversionCodes.BGR2HLS_FULL)
     // ** alternate normalization methods tried
+    Cv2.CvtColor(!>img,!>normd,ColorConversionCodes.BGR2YCrCb)
+    //let hsv = new Mat()
+    //Cv2.CvtColor(!>img,!>hsv,ColorConversionCodes.BGR2HSV)
+    //Cv2.AddWeighted(!> img, 0.5, !> hsv, 0.5, 0.30, !> normd)
+    //img.CopyTo(normd)
     //Cv2.CvtColor(!>img,!>normd,ColorConversionCodes.BGR2GRAY)
     //Cv2.CvtColor(!>img,!>normd,ColorConversionCodes.BGR2HLS)
-    //Cv2.CvtColor(!>img,!>normd,ColorConversionCodes.BGR2HSV)
     normd
 
 //normalize and compute HOG features for the input image
@@ -68,7 +74,7 @@ Array.shuffle negTrain
 
 //the percent of data to use for training
 //(over 40K images in input folders so don't need to use all of them, to save time)
-let testPct = 0.3    
+let testPct = 0.9    
 
 let NTrainPos = (float posTrain.Length * testPct) |> int //number of pos and neg images
 let NTrainNeg = (float negTrain.Length *testPct) |> int
@@ -107,11 +113,11 @@ let trainSvm (hd:HOGDescriptor) posTrain negTrain svmFile =
     let svm = SVM.Create()
     svm.Coef0 <- 0.0
     svm.Degree <- 2.
-    svm.TermCriteria <- (TermCriteria(CriteriaType.Eps + CriteriaType.MaxIter,2000,0.001))
-    svm.Gamma <- 0.
+    svm.TermCriteria <- (TermCriteria(CriteriaType.Eps + CriteriaType.MaxIter,10000,0.001))
+    svm.Gamma <- 1.
     svm.KernelType <- SVM.KernelTypes.Linear
     svm.Nu <- 0.5
-    svm.P <- 0.01
+    svm.P <- 0.00001
     svm.C <- 0.01
 
     //use epsilon 'regression' SVM type for object detection, 
@@ -236,6 +242,11 @@ let findBoundingBoxes (threshold:float) (img:Mat) (rects:Rect[]) =
     let boundings = pts |> Array.map(fun pts->Cv2.BoundingRect(pts))                                 //find bounding boxes from contours
     boundings
 
+let drawTrack track (img:Mat) =
+    let rect = toRect track
+    //printfn "%A" rect
+    Cv2.Rectangle(img,rect,Scalar(255.,150.,255.),5)
+
 //kick off SVM training - it can take several minutes, depending on the number of images
 let trainDetector() =
     printfn "start training"
@@ -248,16 +259,18 @@ let v_prjctT = @"D:\repodata\obj_detect\test_video.mp4"
 let v_prjctPOut = @"D:\repodata\obj_detect\project_video_out.mp4"
 let v_prjctTOut = @"D:\repodata\obj_detect\test_video_out.mp4"
 
+
 //process the input video file to detect objects
 //and write an annotated video to the output
 //(the annotations are bounding boxes over the detected objects)
 let testVideoDetect (v_prjct:string) (v_out:string) =
-    let detector = detect (Size(4.,4.)) 0.1 0 //configure the detection mehtod
+    let detector = detect (Size(8.,8.)) 0.4 0 //configure the detection mehtod
 
     let hd = hog trainWinSize                 //instantiate HOGDescriptor
     let svmT = SVM.Load(svmFile)           //load SVM model from file
     setDetector hd svmT                       //configure HOGDescriptor with SVM
 
+    let mutable tracks = []
     //video processing
     use clipIn = new VideoCapture(v_prjct)
     let imgSz = new Size(clipIn.FrameWidth,clipIn.FrameHeight)
@@ -273,10 +286,13 @@ let testVideoDetect (v_prjct:string) (v_out:string) =
             use n = normalizeFrame m                           //normalize input frame
             let rcts,wts = detector hd n                       //run the frame through the HOGDescriptor to detect objects
             let rcts = rcts |> Array.filter (fun r->           //filter out detections in the sky or too close to the bottom
-                    r.Bottom >= int (float imgSz.Height * 0.3) 
+                    r.Top >= int (float imgSz.Height * 0.1)
+                    && r.Bottom >= int (float imgSz.Height * 0.3) 
                     && r.Bottom <= int (float imgSz.Height * 0.95))
-            let bbs = findBoundingBoxes 30. m rcts             //merge overlapping detections
-            bbs |> Array.iter (fun b -> Cv2.Rectangle(m,b,Scalar(0.,255.,255.),2))  //draw bounding boxes over detected objects
+            let detections = findBoundingBoxes 7. m rcts             //merge overlapping detections
+            tracks <- updateTracks tracks detections |> List.filter (fun t->t.Tracking >= 0)
+            tracks |> List.iter (fun t -> if t.Tracking > 2 then drawTrack t m)
+            detections |> Array.iter (fun b -> Cv2.Rectangle(m,b,Scalar(0.,255.,255.),2))  //draw bounding boxes over detected objects
             clipOut.Write(m)
             let fn = Path.Combine(folder,sprintf "th%d.jpg" !r)
             m.SaveImage(fn) |> ignore
@@ -293,9 +309,8 @@ let testVideoDetect (v_prjct:string) (v_out:string) =
 (*
 testVideoDetect v_prjctP v_prjctPOut
 testVideoDetect v_prjctT v_prjctTOut
-launchSvmTraining()
-testPrediction()
 trainDetector()
+testPrediction()
 *)
 
 //Utility method to test the detector on a single image
@@ -309,12 +324,12 @@ let testDetector() =
     //let file,p = @"D:\repodata\obj_detect\vehicles\GTI_Right\image0199.png",zp
     let img = Cv2.ImRead(file)
     let normd = normalizeFrame img
-    let wm = detect padding 0.2 0 hd normd
+    let wm = detect padding 0.3 0 hd normd
     let rects = fst wm
     let heatMap = heatmapRects (img.Size()) (fst wm)
+    let cntrTh = 10.
     use heatMapGray = new Mat([img.Height;img.Width],MatType.CV_8UC1,heatMap)
     use heatMapTh = heatMapGray.EmptyClone()
-    let cntrTh = 20.
     Cv2.InRange(!>heatMapGray,Scalar(cntrTh),Scalar(255.),!>heatMapTh)
     let mutable pts : Point[][] = null
     let mutable hi : HierarchyIndex[] = null
