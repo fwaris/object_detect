@@ -61,6 +61,12 @@ let private dtbyte (m:Mat) =
             let v = m.Get<byte>(r,c)
             printfn "%d, %d = %A" r c v
 
+let private dtbyte3 (m:Mat) =
+    for r in 0..9 do
+        for c in 0..9 do
+            let v = m.Get<Vec3b>(r,c)
+            printfn "%d, %d = %d %d %d" r c v.Item0 v.Item1 v.Item2
+
 let private dtfloat32 (m:Mat) =
     for r in 0..9 do
         for c in 0..9 do
@@ -71,6 +77,7 @@ let dmp10 (m:Mat) =
     let mt = m.Type()   
     if mt = MatType.CV_32FC1 then dtfloat32 m
     elif mt = MatType.CV_8UC1 then dtbyte m
+    elif mt = MatType.CV_8UC3 then dtbyte3 m
     else failwithf "case not handled %A" m.Type
 
 

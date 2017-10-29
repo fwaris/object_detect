@@ -80,3 +80,28 @@ let extractWhiteCar() =
     for i in 0..200 do
         let f = Path.Combine(wcOutFldr, sprintf "i%i.png" i)
         p.SaveImage(f) |> ignore
+
+
+let enhanceBoads()=
+    let folder = @"D:\repodata\obj_detect\boards"
+    Directory.GetFiles(folder,"i_*.*") |> Array.iter File.Delete
+    let files = Directory.GetFiles(folder,"board*.png")
+    let f = files.[0]
+    files |> Array.iter(fun f ->
+        let m1 = Cv2.ImRead(f)
+        for i in 0..300 do
+            let m2 = m1.Clone()
+            for i in 0..m2.Rows-1 do
+                for j in 0..m2.Cols-1 do
+                    let mutable g = m2.Get<Vec3b>(i,j)
+                    g.Item0 <- g.Item0 + byte(GAUSS 0. 1.)
+                    g.Item1 <- g.Item1 + byte(GAUSS 0. 1.)
+                    g.Item2 <- g.Item2 + byte(GAUSS 0. 1.)
+                    m2.Set(i,j, g)               
+            //Utils.dmp10 m2
+            //Utils.dmp10 m1
+            let fn = Path.Combine(folder,sprintf "i_%d" i + Path.GetFileName(f))
+            m2.SaveImage(fn)
+            m2.Release()
+        m1.Release()
+        )
