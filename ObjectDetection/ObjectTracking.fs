@@ -23,7 +23,7 @@ let toRect t =
     Rect(pX,pY,int t.AvgWidth, int t.AvgHeight)
 
 let TRACK_MAX = 7
-let FRAME_PRED_CTR_THLD = 100.
+let FRAME_PRED_CTR_THLD = 75.
 
 let rectCtr (r:Rect) =  Point2d(float r.X + (float r.Width) / 2.0, float r.Y + (float r.Height) / 2.0)
 
@@ -38,7 +38,7 @@ let updateAvg prevAvg prevCount newVal =
     prevAvg * 0.75 + newAvg * 0.25
 
 let predictY dflt intrcpt slope x  =    
-    let y = intrcpt + slope * x
+    let y = intrcpt + (slope * x)
     if System.Double.IsNaN y then dflt else y
 
 //update track info with a new matching detection
@@ -71,11 +71,12 @@ let updateTrack track (detection:Rect) =
 
 //update track info with no matching detection
 let updateTrackNoDetect track =
-    let predCtrX = track.PredictedCtr.X + track.XPixelsPerFrame
-    let predCtrY = predictY track.PredictedCtr.Y track.LineIntercept track.LineSlope  predCtrX
+    let predCtrX = track.PredictedCtr.X + track.XPixelsPerFrame 
+    let predCtrY = predictY track.PredictedCtr.Y track.LineIntercept track.LineSlope  predCtrX 
+    let change = predCtrY - track.PredictedCtr.Y |> min 20. |> max -20. // limit movement for smoothing
     {track with
         Tracking        = track.Tracking - 1
-        PredictedCtr    = Point2d(predCtrX, predCtrY)
+        PredictedCtr    = Point2d(predCtrX, track.PredictedCtr.Y + change)
     }
 
 let newTrack (detection:Rect) =

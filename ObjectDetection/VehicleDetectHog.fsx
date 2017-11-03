@@ -22,12 +22,12 @@ let boardSvmFile = @"D:\repodata\obj_detect\veh_detect_board.yml"
 let hog (sz:Size) =
     let hd = new HOGDescriptor()
     hd.WinSize <- sz
-    hd.BlockSize <- Size(24.,24.)
-    hd.BlockStride <- Size(8.,8.)
-    hd.CellSize <- Size(4.,4.)
-    //hd.BlockSize <- Size(16.,16.)
-    //hd.BlockStride <- Size(8.,8.)
-    //hd.CellSize <- Size(8.,8.)
+    hd.BlockSize <- Size(24,24)
+    hd.BlockStride <- Size(8,8)
+    hd.CellSize <- Size(8,8)
+    //hd.BlockSize <- Size(24,24)
+    //hd.BlockStride <- Size(8,8)
+    //hd.CellSize <- Size(8,8)
     hd.Nbins <- 9
     //hd.NLevels <- 10 //default
     hd.DerivAperture <- 2
@@ -120,7 +120,7 @@ let trainSvm (hd:HOGDescriptor) posTrain negTrain svmFile =
     let svm = SVM.Create()
     svm.Coef0 <- 0.0
     svm.Degree <- 2.
-    svm.TermCriteria <- (TermCriteria(CriteriaType.Eps + CriteriaType.MaxIter,6000,0.001))
+    svm.TermCriteria <- (TermCriteria(CriteriaType.Eps + CriteriaType.MaxIter,10000,0.001))
     svm.Gamma <- 1.
     svm.KernelType <- SVM.KernelTypes.Linear
     svm.Nu <- 0.8//0.1=>0.84; 0.9=>0.95; 0.8=>0.95
@@ -174,7 +174,7 @@ let NBoardTrain = (float boardTrain.Length * boardTestPct) |> int //number of po
 let trainSignSvm (hd:HOGDescriptor) boardTrain boardSvmFile = 
     //let hd = hog trainWinSize
     //extract HOG features from images
-    let features = boardTrain |> Seq.map (getFeatures hd) |> Seq.take NBoardTrainPos |> Seq.toArray
+    let features = boardTrain |> Seq.map (getFeatures hd) |> Seq.take NBoardTrain |> Seq.toArray
     let head  = features |> Seq.head //keep around first feature array for later
 
     //construct labels [-1,+1]
@@ -196,20 +196,21 @@ let trainSignSvm (hd:HOGDescriptor) boardTrain boardSvmFile =
     let svm = SVM.Create()
     svm.Coef0 <- 0.0
     svm.Degree <- 2.
-    svm.TermCriteria <- (TermCriteria(CriteriaType.Eps + CriteriaType.MaxIter,1000,0.1))
+    svm.TermCriteria <- (TermCriteria(CriteriaType.Eps + CriteriaType.MaxIter,6000,0.001))
     svm.Gamma <- 1.
     svm.KernelType <- SVM.KernelTypes.Linear
     svm.Nu <- 0.8//0.1=>0.84; 0.9=>0.95; 0.8=>0.95
     svm.P <- 0.9
-    svm.C <- 10.
+    svm.C <- 0.001
     svm.Type <- SVM.Types.OneClass
     let r = svm.Train(!> ftrMat, SampleTypes.RowSample, !> lblMat)
     svm.Save(boardSvmFile)
 
-let testPredictSignSvm = 
+let testPredictSignSvm() = 
     let hd = hog trainWinSize
     let svmT = SVM.Load(boardSvmFile)
-    let posFtrs = boardTrain |> Seq.map (getFeatures hd) |> Seq.skip NTrainPos |> Seq.toArray
+    let posFtrs = boardTrain |> Seq.map (getFeatures hd) |> Seq.skip NBoardTrain |> Seq.toArray
+    posFtrs.Length
     let h  = posFtrs |> Seq.head
     let negFtrs = nonBoardTrain |> Seq.map (getFeatures hd) |> Seq.toArray
     Array.shuffle negFtrs
@@ -220,9 +221,12 @@ let testPredictSignSvm =
     let test = new Mat(ftrSz,MatType.CV_32FC1,ftrs)
     let out = new Mat()
     svmT.Predict(!>test,!> out)
-    let y_pred = [for i in 0..out.Rows-1 ->  if out.Get<float>(i,0) > 0. then 1 else -1]
-    //let y_predProb = [for i in 0..out.Rows-1 ->  out.Get<float>(i,0) ]
-    //y_predProb |> Seq.min, y_predProb |> Seq.max
+    let y_pred = [for i in 0..out.Rows-1 ->  if out.Get<float>(i,0) > 0. then 1 else 0]
+    (*
+    let y_predProb = [for i in 0..out.Rows-1 ->  out.Get<float>(i,0) ]
+    y_predProb |> List.skip posFtrs.Length 
+    y_predProb |> Seq.min, y_predProb |> Seq.max
+    *)
     let acc = Seq.zip y_act y_pred |> Seq.map (fun (a,p) -> if a=p then 1. else 0.) |> Seq.sum |> fun s-> s/ float y_pred.Length
     acc
 
@@ -325,11 +329,6 @@ let drawTrack track (img:Mat) =
     Cv2.Rectangle(img,rect,Scalar(255.,150.,255.),5)
     Cv2.PutText(!>img,sprintf "%d" track.Tracking, Point(rect.X + 2, rect.Y + 2), HersheyFonts.HersheyPlain, 8., Scalar(255.,0.,0.))
 
-let boardDetector =
-    let padding = Size(8,8)
-    let stride  = Size(8,4)
-    let detector = detect padding stride 0.0 0
-    detector
 
 let detectBoard (detector:Mat->Rect[]*float[]) (img:Mat) (region:Rect) =
     use subMat = img.SubMat(region)
@@ -355,18 +354,13 @@ let v_prjctTOut = @"D:\repodata\obj_detect\test_video_out.mp4"
 let testVideoDetect (v_prjct:string) (v_out:string) =
     //** configure detectors
     let padding = Size(8,8)
-    let stride  = Size(8,4)
-    let detector = detect padding stride 0.18 0
+    let stride  = Size(4,4)
+    let detector = detect padding stride 0.195 0
     let cntrTh = 3.
+    //***
     let hd = hog trainWinSize              //instantiate HOGDescriptor
     let svmT = SVM.Load(svmFile)           //load SVM model from file
     setDetector hd svmT                    //configure HOGDescriptor with SVM
-    let svmBT = SVM.Load(boardSvmFile)
-    let hdBoard = hog trainWinSize
-    setDetector hdBoard svmBT
-    let bdetect = boardDetector hdBoard
-    let checkBdetect = detectBoard bdetect
-    //***
     let mutable tracks = []
     //video processing
     use clipIn = new VideoCapture(v_prjct)
@@ -408,30 +402,21 @@ let testVideoDetect (v_prjct:string) (v_out:string) =
 trainDetector();
 testPrediction();
 testVideoDetect v_prjctP v_prjctPOut;;
-dtestVideoDetect v_prjctT v_prjctTOut
+thandtestVideoDetect v_prjctT v_prjctTOut
 *)
 
 //Utility method to test the detector on a single image
 let testDetector() =
     //** configure detectors
     let padding = Size(8,8)
-    let stride  = Size(8,4)
-    let detector = detect padding stride 0.18 0
-    let cntrTh = 3.
+    let stride  = Size(8,8)
+    let detector = detect padding stride 0.195 0
+    let cntrTh = 2.
+    //***
     let hd = hog trainWinSize              //instantiate HOGDescriptor
     let svmT = SVM.Load(svmFile)           //load SVM model from file
     setDetector hd svmT                    //configure HOGDescriptor with SVM
-    let svmBT = SVM.Load(boardSvmFile)
-    let hdBoard = hog trainWinSize
-    setDetector hdBoard svmBT
-    let bdetect = boardDetector hdBoard
-    let checkBdetect  : Mat->Rect->Unit = detectBoard bdetect
-    //***
-    //let file = @"D:\repodata\adv_lane_find\imgs\img214.jpg"
-    //let file = @"D:\repodata\adv_lane_find\imgs\img517.jpg"
-    let file = @"D:\repodata\adv_lane_find\imgs\img21.jpg"
-    //let file,p = @"D:\repodata\obj_detect\test3\image_web_1.jpg",ep
-    //let file,p = @"D:\repodata\obj_detect\vehicles\GTI_Right\image0199.png",zp
+    let file = @"D:\repodata\adv_lane_find\imgs\img216.jpg"
     let img = Cv2.ImRead(file)
     let normd = normalizeFrame img
     let wm = detector hd normd
@@ -449,7 +434,7 @@ let testDetector() =
     let boundings = pts |> Array.map(fun pts->Cv2.BoundingRect(pts))
     let b1 = img.Clone()
     boundings |> Array.iter(fun b -> Cv2.Rectangle(b1,b,Scalar(0.,255.,0.)))
-    boundings |> Array.iter(fun b -> checkBdetect img b)
+    //boundings |> Array.iter(fun b -> checkBdetect img b)
     let rawRects = img.Clone()
     drawRects wm rawRects
 
