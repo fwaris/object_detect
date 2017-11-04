@@ -15,6 +15,7 @@
 #load "ObjectTracking.fs"
 #load "CNTKImageUtils.fs"
 #load "Detector.fs"
+#load "DetectorSettings.fs"
 open System.IO
 let path = Path.Combine(__SOURCE_DIRECTORY__,@"..\nativeDLLs")
 System.Environment.CurrentDirectory <- path

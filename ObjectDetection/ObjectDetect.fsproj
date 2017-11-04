@@ -65,6 +65,7 @@
     <Compile Include="ObjectTracking.fs" />
     <Compile Include="CNTKImageUtils.fs" />
     <Compile Include="Detector.fs" />
+    <Compile Include="DetectorSettings.fs" />
     <Compile Include="Program.fs" />
     <None Include="App.config" />
     <Content Include="packages.config" />

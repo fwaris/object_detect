@@ -7,6 +7,7 @@ open System.Runtime.InteropServices
 open System.Collections.Generic
 open Utils
 open System.IO
+open Detector
 
 let imgFile = @"D:\repodata\adv_lane_find\imgs\img126.jpg"
 
@@ -60,10 +61,10 @@ let ts = srchWins |> Array.filter (fun r-> r.Left < 10)
 Directory.GetFiles(Detector.testFolder) |> Array.iter File.Delete
 let model_path = @"..\models\detector.bin"
 if srchWins.Length % parallelization <> 0 then failwith "parallelization error"
-let mdl = Detector.loadModel model_path
+let mdl = Detector.loadFromFile model_path
 let pool  = mdl::[for _ in 1 .. parallelization-1 -> mdl.Clone(ParameterCloningMethod.Clone)] 
 let sr = img.SubMat(searchRange)
-let detections = Detector.detect 3 sz pool sr srchWins |> Seq.toArray
+let detections = Detector.detect 3 sz  0.7f pool sr srchWins |> Seq.toArray
 
 let testSr = img.Clone().SubMat(searchRange)
 detections |> Seq.iter (fun r-> Cv2.Rectangle(testSr, r, Scalar(123.,5.,25.),1))

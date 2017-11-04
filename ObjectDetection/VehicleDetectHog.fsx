@@ -278,7 +278,7 @@ let detect (padding:Size) (stride:Size) threshold group (hd:HOGDescriptor)  (img
 //draw rectangles on an image for the detected objects
 //strength of detection is indicated by shade of green
 //of the rectangle outline
-let drawRects (detections,weights:float[]) (img:Mat) =
+let drawRectsWts (detections,weights:float[]) (img:Mat) =
     detections |> Array.iteri (fun i boundingBox ->
         let clr = Scalar(0.,weights.[i] * weights.[i] * 200., 0.)
         Cv2.Rectangle(img,boundingBox,clr,img.Cols/400 + 1)
@@ -290,6 +290,12 @@ let drawRectsSmpl (detections,weights:float[]) (img:Mat) =
         let clr = Scalar(0.,weights.[i] * weights.[i] * 200., 0.)
         Cv2.Rectangle(img,d,clr,5)
         printfn "weight %d %f" i weights.[i])
+
+//alternate draw rectangle method  
+let drawRects detections (img:Mat) =
+    detections |> Array.iteri (fun i d ->
+        let clr = Scalar(125.,200., 0.)
+        Cv2.Rectangle(img,d,clr,5))
 
 //Create a heat map from the given detections.
 //It increments a counter for each pixel covered by a rectangle
@@ -341,6 +347,8 @@ let trainDetector() =
     printfn "start training"
     trainSvm (hog trainWinSize) posTrain negTrain svmFile
     printfn "done training"
+
+let repositionRect (r:Rect) =  Rect(r.X, DetectorSettings.searchRange.Y + r.Y, r.Width, r.Height )
    
 //input and output video files paths
 let v_prjctP = @"D:\repodata\obj_detect\project_video.mp4"
@@ -352,15 +360,17 @@ let v_prjctTOut = @"D:\repodata\obj_detect\test_video_out.mp4"
 //and write an annotated video to the output
 //(the annotations are bounding boxes over the detected objects)
 let testVideoDetect (v_prjct:string) (v_out:string) =
+    let mdl = DetectorSettings.loadModel() 
+    let probTh = 0.75f
     //** configure detectors
     let padding = Size(8,8)
     let stride  = Size(4,4)
     let detector = detect padding stride 0.195 0
-    let cntrTh = 3.
+    let cntrTh = 2.
     //***
-    let hd = hog trainWinSize              //instantiate HOGDescriptor
-    let svmT = SVM.Load(svmFile)           //load SVM model from file
-    setDetector hd svmT                    //configure HOGDescriptor with SVM
+    //let hd = hog trainWinSize              //instantiate HOGDescriptor
+    //let svmT = SVM.Load(svmFile)           //load SVM model from file
+    //setDetector hd svmT                    //configure HOGDescriptor with SVM
     let mutable tracks = []
     //video processing
     use clipIn = new VideoCapture(v_prjct)
@@ -374,14 +384,23 @@ let testVideoDetect (v_prjct:string) (v_out:string) =
     while clipIn.Grab() do
         try
             use m = clipIn.RetrieveMat()
-            use n = normalizeFrame m                           //normalize input frame
-            let rcts,wts = detector hd n                       //run the frame through the HOGDescriptor to detect objects
-            let rcts = rcts |> Array.filter (fun r->           //filter out detections in the sky or too close to the bottom
-                    r.Top >= int (float imgSz.Height * 0.1)
-                    && r.Bottom >= int (float imgSz.Height * 0.3) 
-                    && r.Bottom <= int (float imgSz.Height * 0.95)
-                    )
-            let detections = findBoundingBoxes cntrTh m rcts  |> Array.filter (fun r->aspectRatio r > 0.30)           //merge overlapping detections
+            use roi = m.SubMat(DetectorSettings.searchRange)
+            //use n = normalizeFrame m                           //normalize input frame
+            //let rcts,wts = detector hd n                       //run the frame through the HOGDescriptor to detect objects
+            //let rcts = rcts |> Array.filter (fun r->           //filter out detections in the sky or too close to the bottom
+            //        r.Top >= int (float imgSz.Height * 0.1)
+            //        && r.Bottom >= int (float imgSz.Height * 0.3) 
+            //        && r.Bottom <= int (float imgSz.Height * 0.95)
+            //        )
+            let hits = Detector.detectBatch 
+                            3 
+                            trainWinSize 
+                            probTh 
+                            mdl 
+                            roi 
+                            DetectorSettings.srchWins
+            let rects = hits |> Seq.map repositionRect |> Seq.toArray
+            let detections = findBoundingBoxes cntrTh m rects  |> Array.filter (fun r->aspectRatio r > 0.30)           //merge overlapping detections
             tracks <- updateTracks tracks detections |> List.filter (fun t->t.Tracking >= 0)
             tracks |> List.iter (fun t -> if t.Tracking > 3 then drawTrack t m)
             detections |> Array.iter (fun b -> Cv2.Rectangle(m,b,Scalar(0.,255.,255.),2))  //draw bounding boxes over detected objects
@@ -391,7 +410,7 @@ let testVideoDetect (v_prjct:string) (v_out:string) =
             r := !r + 1
             printfn "th %d" !r
             m.Release()
-            n.Release()
+            roi.Release()
         with ex ->
             printfn "frame miss %d %s" !r ex.Message
     clipIn.Release()
@@ -402,26 +421,39 @@ let testVideoDetect (v_prjct:string) (v_out:string) =
 trainDetector();
 testPrediction();
 testVideoDetect v_prjctP v_prjctPOut;;
-thandtestVideoDetect v_prjctT v_prjctTOut
+testVideoDetect v_prjctT v_prjctTOut
 *)
 
 //Utility method to test the detector on a single image
 let testDetector() =
-    //** configure detectors
+    let mdl = DetectorSettings.loadModel() 
+    let probTh = 0.75f
+   //** configure detectors
     let padding = Size(8,8)
     let stride  = Size(8,8)
-    let detector = detect padding stride 0.195 0
-    let cntrTh = 2.
+    //let detector = detect padding stride 0.195 0
+    let cntrTh = 15.
     //***
-    let hd = hog trainWinSize              //instantiate HOGDescriptor
-    let svmT = SVM.Load(svmFile)           //load SVM model from file
-    setDetector hd svmT                    //configure HOGDescriptor with SVM
-    let file = @"D:\repodata\adv_lane_find\imgs\img216.jpg"
+    //let hd = hog trainWinSize              //instantiate HOGDescriptor
+    //let svmT = SVM.Load(svmFile)           //load SVM model from file
+    //setDetector hd svmT                    //configure HOGDescriptor with SVM
+    let file = @"D:\repodata\adv_lane_find\imgs\img499.jpg"
     let img = Cv2.ImRead(file)
-    let normd = normalizeFrame img
-    let wm = detector hd normd
-    let rects = fst wm
-    let heatMap = heatmapRects (img.Size()) (fst wm)
+    //let normd = normalizeFrame img
+    //let wm = detector hd normd
+    //let rects = fst wm
+    //let heatMap = heatmapRects (img.Size()) (fst wm)
+    let roi = img.SubMat(DetectorSettings.searchRange)
+    Directory.GetFiles(Detector.testFolder) |> Array.iter File.Delete
+    let hits = Detector.detectBatch 
+                    3 
+                    trainWinSize 
+                    probTh 
+                    mdl 
+                    roi 
+                    DetectorSettings.srchWins
+    let rects = hits |> Seq.map repositionRect |> Seq.toArray
+    let heatMap = heatmapRects (img.Size()) rects
     use heatMapGray = new Mat([img.Height;img.Width],MatType.CV_8UC1,heatMap)
     use heatMapTh = heatMapGray.EmptyClone()
     Cv2.InRange(!>heatMapGray,Scalar(cntrTh),Scalar(255.),!>heatMapTh)
@@ -436,7 +468,7 @@ let testDetector() =
     boundings |> Array.iter(fun b -> Cv2.Rectangle(b1,b,Scalar(0.,255.,0.)))
     //boundings |> Array.iter(fun b -> checkBdetect img b)
     let rawRects = img.Clone()
-    drawRects wm rawRects
+    drawRects rects rawRects
 
     win "rawRects" rawRects
     win "heatMapGray" heatMapGray
