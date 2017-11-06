@@ -13,7 +13,7 @@ open Probability
 open FSharp.Data
 
 //this script prepares images from different data sources
-//for HOG based SVM training
+//for classifier training
 //All images are sized to the 64x64 
 
 let inFolder = @"D:\repodata\obj_detect\object-dataset"
@@ -101,6 +101,30 @@ let enhanceBoads()=
             //Utils.dmp10 m2
             //Utils.dmp10 m1
             let fn = Path.Combine(folder,sprintf "i_%d" i + Path.GetFileName(f))
+            m2.SaveImage(fn)
+            m2.Release()
+        m1.Release()
+        )
+
+let enhanceWc() =    
+    let folder = @"D:\repodata\obj_detect\wcbase"
+    Directory.GetFiles(folder,"c_*.*") |> Array.iter File.Delete
+    let files = Directory.GetFiles(folder,"i*.png")
+    let f = files.[0]
+    files |> Array.iter(fun f ->
+        let m1 = Cv2.ImRead(f)
+        for i in 0..500 do
+            let m2 = m1.Clone()
+            for i in 0..m2.Rows-1 do
+                for j in 0..m2.Cols-1 do
+                    let mutable g = m2.Get<Vec3b>(i,j)
+                    g.Item0 <- g.Item0 + byte(GAUSS 0. 1.)
+                    g.Item1 <- g.Item1 + byte(GAUSS 0. 1.)
+                    g.Item2 <- g.Item2 + byte(GAUSS 0. 1.)
+                    m2.Set(i,j, g)               
+            //Utils.dmp10 m2
+            //Utils.dmp10 m1
+            let fn = Path.Combine(folder,sprintf "c_%d" i + Path.GetFileName(f))
             m2.SaveImage(fn)
             m2.Release()
         m1.Release()

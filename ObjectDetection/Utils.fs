@@ -1,4 +1,6 @@
 ﻿module Utils
+//utility methods for opencv 
+
 open System.IO
 open OpenCvSharp
 

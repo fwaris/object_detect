@@ -17,7 +17,12 @@ negTrain = glob.glob(negativeImagesFolder + "/**/*.png", recursive=True)
 
 def loadImage (sp) :
     image = cv2.imread(sp)
-    return np.asarray(image)
+    normed = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
+    #cv2.cv2.COLOR_BGR2HSV
+    #cv2.cv2.COLOR_BGR2YCrCb
+    #normed = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    #normed = cv2.cvtColor(image, cv2.COLOR_BGR2HLS)
+    return np.asarray(normed)
 
 test1 = loadImage( "D:/repodata/obj_detect/nonudcars/i8.png")
 test2 = loadImage( "D:/repodata/obj_detect/vehicles/udcars/i7.png")
@@ -32,7 +37,7 @@ X.extend(X_neg)
 y = y_pos
 y.extend(y_neg)
 X,y = shuffle (X,y)
-X_train,X_test,y_train,y_test = train_test_split(X,y,train_size = 0.8)
+X_train,X_test,y_train,y_test = train_test_split(X,y,train_size = 0.7)
 
 def generator(X,y, batch_size=32):
     num_samples = len(X)
@@ -83,7 +88,7 @@ model.compile(loss='binary_crossentropy', optimizer=adam, metrics=['accuracy'])
 cp = model.fit_generator(
     train_gnrtr, steps_per_epoch=train_steps, \
     validation_data=test_gnrtr, validation_steps=test_steps, \
-    epochs=3)
+    epochs=10)
 import cntk as C
 import keras.backend as K
 C.combine(model.model.outputs).save('detector.bin')

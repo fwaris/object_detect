@@ -1,44 +1,35 @@
 ﻿module DetectorSettings
 open OpenCvSharp
-open CNTK
 
-let searchRange = Rect(0,360,1280,670-360)
+let searchRange = Rect(0,360,1280,670-360) //lower part of image for vehicle detection
 
 let model_path = @"..\models\detector.bin"
 
-let srchWinHorzShift = 10
-let nSrchWinSizes    = 10.//20.
-let srchRectMinHt    = 20.
-let srchRectMaxHt    = 310.
-let srchTopStart     = 65.
-let srchTopEnd       = 0.
-let srchLeftStart    = 300.
-let srchLeftEnd      = -250.
+let nSrchRows        = 20.    //number of rows of search windows
+let srchWinHorzShift = 10     //horizontal shift in pixels for search win in each row
+let srchRectMinHt    = 40.    //min window height
+let srchRectMaxHt    = 310.   //max window height
+let srchTopStart     = 65.    //top position of first row windows
+let srchTopEnd       = 0.     //top position of last row windows
+let srchLeftStart    = 300.   //start left postion of first row
+let srchLeftEnd      = -250.  //start left position of last row
 
-let topIncr         = (srchTopStart - srchTopEnd) / nSrchWinSizes 
-let srchRectHtIncr  = (srchRectMaxHt - srchRectMinHt) / nSrchWinSizes 
-let srchLeftIncr    = (srchLeftStart - srchLeftEnd) / nSrchWinSizes
+let topIncr         = (srchTopStart - srchTopEnd) / nSrchRows 
+let srchRectHtIncr  = (srchRectMaxHt - srchRectMinHt) / nSrchRows 
+let srchLeftIncr    = (srchLeftStart - srchLeftEnd) / nSrchRows
 
 let srchWinTops     = [for i in srchTopStart ..  -topIncr .. srchTopEnd -> int i]
 let srchWinHts      = [for i in srchRectMinHt .. srchRectHtIncr .. srchRectMaxHt -> int i]
 let srchLefts       = [for i in srchLeftStart .. -srchLeftIncr .. srchLeftEnd -> int i]
 
-let parallelization = 4
-
+//cache search windows for object detection
+//the windows sizes and locations are controlled by the settings above
 let srchWins = 
-    let winList = 
-        Seq.zip3 srchWinTops srchLefts srchWinHts 
-        |> Seq.collect (fun (t,l,h) ->
-            [for l' in l .. srchWinHorzShift .. (searchRange.Width - l) ->  Rect(l',t,h,h) ]
-            |> List.filter (fun r->r.Left >= 0 && r.Bottom <= searchRange.Bottom && r.Right <= searchRange.Right)
-        )
-        |> Seq.toArray
-    let m = [for i in winList.Length .. -1 .. 0 -> i] |> List.find(fun l -> l % parallelization = 0) 
-    winList |> Array.skip (winList.Length - m) //evenly divisible by parallelization factor
-
-
-let createDetectorPool() =
-    let mdl = Detector.loadFromFile model_path
-    mdl::[for _ in 1 .. parallelization-1 -> mdl.Clone(ParameterCloningMethod.Clone)] 
+    Seq.zip3 srchWinTops srchLefts srchWinHts 
+    |> Seq.collect (fun (t,l,h) ->
+        [for l' in l .. srchWinHorzShift .. (searchRange.Width - l) ->  Rect(l',t,h,h) ]
+        |> List.filter (fun r->r.Left >= 0 && r.Bottom <= searchRange.Bottom && r.Right <= searchRange.Right)
+    )
+    |> Seq.toArray
 
 let loadModel() = Detector.loadFromFile model_path

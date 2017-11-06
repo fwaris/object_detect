@@ -1,4 +1,6 @@
 ﻿module CNTKImageUtils
+//image processing utility methods ported from CNTK code
+//not used for this project
 open FSharp.Collections.ParallelSeq
 open System.Drawing
 open System.Drawing.Imaging

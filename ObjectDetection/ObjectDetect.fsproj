@@ -60,10 +60,12 @@
   <ItemGroup>
     <Compile Include="AssemblyInfo.fs" />
     <Compile Include="OpenCVCommon.fs" />
+    <Compile Include="CNTKImageUtils.fs" />
     <Compile Include="Utils.fs" />
     <Compile Include="Probability.fs" />
+    <Compile Include="SVM.fs" />
     <Compile Include="ObjectTracking.fs" />
-    <Compile Include="CNTKImageUtils.fs" />
+    <Compile Include="NMS.fs" />
     <Compile Include="Detector.fs" />
     <Compile Include="DetectorSettings.fs" />
     <Compile Include="Program.fs" />
@@ -73,7 +75,6 @@
     <None Include="VehicleDetectHog.fsx" />
     <None Include="PrepUdData.fsx" />
     <None Include="TestCntk.fsx" />
-    <None Include="TestScan.fsx" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Cntk.Core.Managed-2.2">
