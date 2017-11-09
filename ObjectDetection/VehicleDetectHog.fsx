@@ -5,6 +5,7 @@ open System
 open System.IO
 open Utils
 open ObjectTracking
+open DetectorSettings
 
 let trainWinSize = Size( 64, 64 )  
 
@@ -61,12 +62,13 @@ let heatmapRects (sz:Size) (detections:Rect[]) =
 // c) find a bounding box from each contour using OpenCV BoundingRec method
 //The threshold value is used to sharpen the contour boundaries
 let findBoundingBoxes (threshold:float) (img:Mat) (rects:Rect[]) =
-    let m2a = heatmapRects (img.Size()) rects                           //heat map
-    use m2m = new Mat([img.Height;img.Width],MatType.CV_8UC1,m2a)       //convert heat map to gray scale image
-    Cv2.InRange(!>m2m,Scalar(threshold),Scalar(255.),!>m2m)             //threshold image to sharpen contours
+    let heatmapBytes = heatmapRects (img.Size()) rects                      //heat map
+    use gray = new Mat([img.Height;img.Width],MatType.CV_8UC1,heatmapBytes) //convert heat map to gray scale image
+    use grayThldd = gray.EmptyClone()
+    Cv2.InRange(!>gray,Scalar(threshold),Scalar(255.),!>grayThldd)          //threshold image to sharpen contours
     let mutable pts : Point[][] = null
     let mutable hi : HierarchyIndex[] = null
-    Cv2.FindContours(!>m2m,&pts,&hi,RetrievalModes.External,ContourApproximationModes.ApproxSimple)  //find contours
+    Cv2.FindContours(!>grayThldd,&pts,&hi,RetrievalModes.External,ContourApproximationModes.ApproxSimple)  //find contours
     let boundings = pts |> Array.map(fun pts->Cv2.BoundingRect(pts))                                 //find bounding boxes from contours
     boundings
 
@@ -76,7 +78,14 @@ let drawTrack track (img:Mat) =
     let rect = toRect track
     //printfn "%A" rect
     Cv2.Rectangle(img,rect,Scalar(255.,150.,255.),5)
-    Cv2.PutText(!>img,sprintf "%d" track.Tracking, Point(rect.X + 2, rect.Y + 2), HersheyFonts.HersheyPlain, 8., Scalar(255.,0.,0.))
+    //draw tracking count (for debugging)
+    //Cv2.PutText(!>img,sprintf "%d" track.Tracking, Point(rect.X + 2, rect.Y + 2), HersheyFonts.HersheyPlain, 6., Scalar(125.,125.,255.))
+
+let checkDrawTrack img track  = 
+    match track.Tracking,track.Lost with 
+    | (t,true) when t > TRACK_OFF -> drawTrack track img
+    | (t,false) when t > TRACK_ON -> drawTrack track img
+    | _ -> ()
 
 let repositionRect (r:Rect) =  Rect(r.X, DetectorSettings.searchRange.Y + r.Y, r.Width, r.Height )
    
@@ -90,10 +99,10 @@ let v_prjctTOut = @"D:\repodata\obj_detect\test_video_out.mp4"
 //and write an annotated video to the output
 //(the annotations are bounding boxes over the detected objects)
 let testVideoDetect (v_prjct:string) (v_out:string) =
-    let mdl = DetectorSettings.loadModel() 
+    use mdl = DetectorSettings.loadModel() 
     let probTh = 0.70f
     let cntrTh = 1.
-    let overlapTh = 0.50
+    let overlapTh = 0.20
     let mutable tracks = []
     //video processing
     use clipIn = new VideoCapture(v_prjct)
@@ -118,13 +127,14 @@ let testVideoDetect (v_prjct:string) (v_out:string) =
                             DetectorSettings.srchWins
             let hitNms = NMS.nms overlapTh hits |> List.map repositionRect
             let rects = hitNms |> Seq.toArray
-            let detections = findBoundingBoxes cntrTh m rects  |> Array.filter (fun r->aspectRatio r > 0.30) //merge overlapping detections
+            let detections = findBoundingBoxes cntrTh m rects  ///|> Array.filter (fun r->aspectRatio r > 0.30) //merge overlapping detections
             tracks <- updateTracks tracks detections |> List.filter (fun t->t.Tracking >= 0)
-            tracks |> List.iter (fun t -> if t.Tracking > 3 then drawTrack t m)
-            detections |> Array.iter (fun b -> Cv2.Rectangle(m,b,Scalar(0.,255.,255.),2))  //draw bounding boxes over detected objects
+            tracks |> List.iter (checkDrawTrack m)
+            //draw raw detections (for debugging)
+            //detections |> Array.iter (fun b -> Cv2.Rectangle(m,b,Scalar(0.,255.,255.),2))  //draw bounding boxes over detected objects
             clipOut.Write(m)
-            let fn = Path.Combine(folder,sprintf "th%d.jpg" !r)
-            m.SaveImage(fn) |> ignore
+            //let fn = Path.Combine(folder,sprintf "th%d.jpg" !r)
+            //m.SaveImage(fn) |> ignore
             r := !r + 1
             printfn "th %d" !r
             m.Release()
@@ -141,10 +151,10 @@ let testDetector() =
     let mdl = DetectorSettings.loadModel() 
     let probTh = 0.70f
     let cntrTh = 1.
-    let overlapTh = 0.50
+    let overlapTh = 0.15
     //let file = @"D:\repodata\adv_lane_find\imgs\img304.jpg"
     //let file = @"D:\repodata\adv_lane_find\imgs\img495.jpg"
-    let file = @"D:\repodata\adv_lane_find\imgs\img588.jpg"
+    let file = @"D:\repodata\adv_lane_find\imgs\img377.jpg"
     //let file = @"D:\repodata\adv_lane_find\imgs\img209.jpg"
     //let file = @"D:\repodata\adv_lane_find\imgs\img280.jpg"
     let img = Cv2.ImRead(file)
@@ -164,8 +174,9 @@ let testDetector() =
 
     hits |> Seq.sortByDescending snd |> Seq.iter (fun (r,f) -> printfn "(Rect(%d,%d,%d,%d),%ff)" r.X r.Y r.Width r.Height f)
     let hitNms = NMS.nms overlapTh hits |> List.map repositionRect
-    NMS.overlap hitNms.[2] hitNms.[0]
     let rects = hitNms |> Seq.toArray
+    //NMS.overlap rects.[3] rects.[5]
+    rects.Length
     let heatMap = heatmapRects (img.Size()) rects
     use heatMapGray = new Mat([img.Height;img.Width],MatType.CV_8UC1,heatMap)
     use heatMapTh = heatMapGray.EmptyClone()

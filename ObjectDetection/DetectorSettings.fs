@@ -6,9 +6,9 @@ let searchRange = Rect(0,360,1280,670-360) //lower part of image for vehicle det
 let model_path = @"..\models\detector.bin"
 
 let nSrchRows        = 20.    //number of rows of search windows
-let srchWinHorzShift = 10     //horizontal shift in pixels for search win in each row
+let srchWinHorzShift = 20     //horizontal shift in pixels for search win in each row
 let srchRectMinHt    = 40.    //min window height
-let srchRectMaxHt    = 310.   //max window height
+let srchRectMaxHt    = 300.   //max window height
 let srchTopStart     = 65.    //top position of first row windows
 let srchTopEnd       = 0.     //top position of last row windows
 let srchLeftStart    = 300.   //start left postion of first row
