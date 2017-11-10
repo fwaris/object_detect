@@ -62,6 +62,7 @@ from keras.regularizers import l1
 from keras.constraints import maxnorm
 from keras.utils import plot_model
 
+#modified version of net avaialable here https://machinelearningmastery.com/object-recognition-convolutional-neural-networks-keras-deep-learning-library/
 model = Sequential()
 model.add(Lambda(lambda x : x / 255.0 - 0.5, input_shape=(64,64,3)))
 model.add(Conv2D(32, (3, 3), activation='relu', padding='same', data_format='channels_last'))
@@ -106,3 +107,6 @@ plt.show()
 
 
 model.predict(np.array([test1,test2]),batch_size=2)
+
+from keras.utils import plot_model
+plot_model(model, to_file='model.png')

@@ -35,28 +35,6 @@ let private nms' overlapTh ls =
         | (r,s)::rest   -> innerLoop acc [] r s rest
     loop [] ls
 
-let private nms2' overlapTh ls =
-    let rec innerLoop  acc rem rL r rs ls =
-        match ls with
-        | [] -> loop ((rL,rs)::acc) (List.rev rem)
-        | (n,ns)::rest ->               
-            if overlap r n > overlapTh then 
-                //if n.Height < r.Height && (rs - ns) < 0.2f then 
-                if n.Height < (rL:Rect).Height then 
-                    innerLoop acc rem n r ns rest  //prefer smaller rect
-                    //innerLoop acc rem n rs rest 
-                else
-                    innerLoop acc rem rL r rs rest  
-            else
-                innerLoop acc ((n,ns)::rem) rL r rs rest
-
-    and loop acc rem = 
-        match rem with
-        | []            -> acc
-        | (r,s)::rest   -> innerLoop acc [] r r s rest
-    loop [] ls
-
-
 //nms API method
 let nms overlapTh (detections:(Rect*float32)[]) =
     let sorted = detections |> Seq.sortByDescending snd |> Seq.toList
